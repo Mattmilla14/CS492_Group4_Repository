@@ -1,0 +1,248 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Bookstore — Inventory (Admin)</title>
+  <style>
+    :root { --violet:#6e2ad2; --gap:12px; }
+    * { box-sizing: border-box; }
+    body { font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif; margin: 24px; line-height: 1.35; color: #111; background:#fff; }
+    header { display:flex; gap: 12px; align-items: center; margin-bottom: 20px; padding: 14px 16px; background: var(--violet); color:#fff; border-radius:8px; }
+    header .brand { font-weight: 800; letter-spacing:.2px; }
+    header .grow { flex:1; }
+    header nav a { margin-left: 8px; color:#fff; text-decoration:underline; }
+    header .mode { font-size:12px; padding:4px 8px; border:1px solid #fff; border-radius:999px; background:rgba(255,255,255,0.2); }
+
+    button { padding: 9px 12px; border: 1px solid #999; background: #fafafa; border-radius: 8px; cursor: pointer; font-size: 14px; }
+    button.primary { background: var(--violet); color: #fff; border-color: var(--violet); }
+    button.danger { background: #b00; color: #fff; border-color: #b00; }
+    button.ghost { background: transparent; }
+
+    .toolbar { display:flex; gap:12px; margin: 10px 0 16px; flex-wrap:wrap; align-items:center; }
+    .toolbar .grow { flex:1 1 280px; }
+    input[type="search"], input[type="text"], input[type="number"] { padding: 8px 10px; border: 1px solid #bbb; border-radius: 6px; font-size: 14px; }
+
+    form { display:grid; grid-template-columns: repeat(6, minmax(120px,1fr)); gap:12px; align-items:end; }
+    form label { display:flex; flex-direction:column; font-size:12px; color:#333; gap:6px; }
+
+    table { width:100%; border-collapse: collapse; margin-top: 10px; background:#fff; }
+    th, td { border-bottom: 1px solid #ddd; padding: 10px 8px; text-align:left; }
+    thead th { background:#f5f5f5; position: sticky; top: 0; z-index: 1; }
+    tr:hover { background:#fffdf2; }
+    .actions { display:flex; gap:6px; }
+
+    .stats { margin-top: 10px; font-size: 13px; color:#333; display:flex; gap:16px; }
+    .status { font-size:12px; color:#046; margin-top:8px; min-height:1em; }
+    mark { background:#ffec99; padding:0 2px; border-radius:2px; }
+
+    @media (max-width: 980px) {
+      form { grid-template-columns: 1fr 1fr; grid-auto-rows:auto; }
+      .toolbar { flex-direction: column; align-items: stretch; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <div class="brand">Bookstore Admin</div>
+    <div class="grow"></div>
+    <span id="modeBadge" class="mode">Mode: Local</span>
+    <nav><a href="shop.html">Shop</a></nav>
+  </header>
+
+  <div class="toolbar" role="region" aria-label="Inventory tools">
+    <input id="search" class="grow" type="search" placeholder="Search by title, ISBN, author" aria-label="Search inventory" />
+    <button id="exportCsv" title="Download CSV">Export CSV</button>
+    <button id="exportJson" title="Download JSON">Export JSON</button>
+    <label class="ghost" for="importFile" title="Import JSON or CSV">
+      <input id="importFile" type="file" accept=".json,.csv" style="display:none" />
+      <span><button type="button">Import…</button></span>
+    </label>
+    <button id="syncBtn" class="ghost" title="Pull latest from server (if available)">Sync from Server</button>
+    <button id="seedBtn" class="ghost" title="Load sample data">Load Sample Data</button>
+    <button id="resetAll" class="danger" title="Clear all items">Clear All</button>
+  </div>
+
+  <form id="itemForm" aria-label="Add or edit item">
+    <input type="hidden" id="editIndex" value="" />
+
+    <label>Item Name
+      <input id="name" type="text" required placeholder="e.g., Clean Code" autocomplete="off" />
+    </label>
+    <label>ISBN
+      <input id="isbn" type="text" inputmode="numeric" pattern="\d+" required placeholder="digits only" />
+    </label>
+    <label>Author
+      <input id="author" type="text" placeholder="optional" />
+    </label>
+    <label>Quantity
+      <input id="qty" type="number" min="0" step="1" required />
+    </label>
+    <label>Price (USD)
+      <input id="price" type="number" min="0" step="0.01" required />
+    </label>
+    <div>
+      <button id="submitBtn" type="submit" class="primary">Add Item</button>
+      <button id="cancelEdit" type="button" class="ghost" style="display:none">Cancel</button>
+    </div>
+  </form>
+
+  <div class="status" id="status" aria-live="polite"></div>
+
+  <table id="table" aria-label="Inventory table">
+    <thead>
+      <tr>
+        <th>Item Name</th>
+        <th>ISBN</th>
+        <th>Author</th>
+        <th>Quantity</th>
+        <th>Price</th>
+        <th>Actions</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  </table>
+
+  <div class="stats" id="stats" aria-live="polite"></div>
+
+  <script>
+    "use strict";
+    const storeKey = "bookstore.inventory.v1";
+    const SEED = [
+      { name: "The Great Gatsby", isbn: "9780743273565", author: "F. Scott Fitzgerald", qty: 10, price: 12.99 },
+      { name: "To Kill a Mockingbird", isbn: "9780061120084", author: "Harper Lee", qty: 12, price: 10.99 },
+      { name: "1984", isbn: "9780451524935", author: "George Orwell", qty: 15, price: 9.99 },
+      { name: "Clean Code", isbn: "9780132350884", author: "Robert C. Martin", qty: 7, price: 34.99 },
+      { name: "Design Patterns", isbn: "9780201633610", author: "Gamma et al.", qty: 5, price: 49.99 }
+    ];
+
+    // Default API base
+    window.BOOKSTORE_API = "http://localhost:3000";
+    const API_BASE = window.BOOKSTORE_API || "";
+    const modeBadge = document.getElementById('modeBadge');
+    let useApi = false;
+
+    async function detectApi() {
+      try {
+        if (!API_BASE) return false;
+        const ok = await fetch(`${API_BASE}/api/health`, { cache: 'no-store' });
+        return ok.ok;
+      } catch { return false; }
+    }
+
+    let items = [];
+
+    function save() {
+      localStorage.setItem(storeKey, JSON.stringify(items));
+    }
+
+    function load() {
+      const raw = localStorage.getItem(storeKey);
+      items = raw ? JSON.parse(raw) : [];
+    }
+
+    function render() {
+      const tbody = document.querySelector('#table tbody');
+      tbody.innerHTML = "";
+      const filter = document.getElementById('search').value.trim().toLowerCase();
+      let total = 0;
+      items.forEach((item, idx) => {
+        if (filter && !JSON.stringify(item).toLowerCase().includes(filter)) return;
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td>${item.name}</td>
+          <td>${item.isbn}</td>
+          <td>${item.author||""}</td>
+          <td>${item.qty}</td>
+          <td>$${item.price.toFixed(2)}</td>
+          <td class="actions">
+            <button onclick="editItem(${idx})">Edit</button>
+            <button onclick="deleteItem(${idx})">Delete</button>
+          </td>`;
+        tbody.appendChild(tr);
+        total += item.qty * item.price;
+      });
+      document.getElementById('stats').textContent = `Items: ${items.length} | Inventory value: $${total.toFixed(2)}`;
+    }
+
+    async function syncFromServer() {
+      if (!useApi) return;
+      try {
+        const res = await fetch(`${API_BASE}/api/items`);
+        items = await res.json();
+        save();
+        render();
+        setStatus("Synced from server.");
+      } catch(e) {
+        setStatus("Failed to sync from server.");
+      }
+    }
+
+    function setStatus(msg) {
+      document.getElementById('status').textContent = msg;
+    }
+
+    document.getElementById('itemForm').addEventListener('submit', async e => {
+      e.preventDefault();
+      const idx = document.getElementById('editIndex').value;
+      const item = {
+        name: document.getElementById('name').value,
+        isbn: document.getElementById('isbn').value,
+        author: document.getElementById('author').value,
+        qty: parseInt(document.getElementById('qty').value),
+        price: parseFloat(document.getElementById('price').value)
+      };
+      if (idx !== "") {
+        items[idx] = item;
+        document.getElementById('editIndex').value = "";
+        document.getElementById('submitBtn').textContent = "Add Item";
+        document.getElementById('cancelEdit').style.display = "none";
+      } else {
+        items.push(item);
+      }
+      save();
+      render();
+      setStatus("Item saved.");
+      e.target.reset();
+    });
+
+    window.editItem = function(idx) {
+      const it = items[idx];
+      document.getElementById('name').value = it.name;
+      document.getElementById('isbn').value = it.isbn;
+      document.getElementById('author').value = it.author;
+      document.getElementById('qty').value = it.qty;
+      document.getElementById('price').value = it.price;
+      document.getElementById('editIndex').value = idx;
+      document.getElementById('submitBtn').textContent = "Update Item";
+      document.getElementById('cancelEdit').style.display = "inline-block";
+    };
+
+    window.deleteItem = function(idx) {
+      if (!confirm("Delete this item?")) return;
+      items.splice(idx,1);
+      save();
+      render();
+    };
+
+    document.getElementById('cancelEdit').addEventListener('click', () => {
+      document.getElementById('itemForm').reset();
+      document.getElementById('editIndex').value = "";
+      document.getElementById('submitBtn').textContent = "Add Item";
+      document.getElementById('cancelEdit').style.display = "none";
+    });
+
+    document.getElementById('search').addEventListener('input', render);
+    document.getElementById('seedBtn').addEventListener('click', () => { items = SEED.slice(); save(); render(); });
+    document.getElementById('resetAll').addEventListener('click', () => { if(confirm("Clear all?")) { items=[]; save(); render(); }});
+    document.getElementById('syncBtn').addEventListener('click', syncFromServer);
+
+    detectApi().then(ok => {
+      useApi = ok; modeBadge.textContent = "Mode: " + (ok ? "Server" : "Local");
+    });
+
+    load();
+    render();
+  </script>
+</body>
+</html>
