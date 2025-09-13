@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales History - Bookstore</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+        header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+        nav { background: #541998; padding: 10px 0; text-align: center; }
+        nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        .container { max-width: 900px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h2 { margin-top: 0; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .empty-history { text-align: center; color: #888; font-size: 1.2em; margin: 40px 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sales History</h1>
+    </header>
+    <nav>
+        <a href="inventory.html">Inventory</a>
+        <a href="notifications.html">Notifications</a>
+    </nav>
+    <div class="container">
+        <h2>Completed Sales</h2>
+        <div id="salesContent"></div>
+    </div>
+    <script>
+        // Example: Load sales history from localStorage (replace with backend fetch in production)
+        function getSales() {
+            return JSON.parse(localStorage.getItem('sales') || '[]');
+        }
+        function renderSales() {
+            const sales = getSales();
+            const salesContent = document.getElementById('salesContent');
+            if (sales.length === 0) {
+                salesContent.innerHTML = '<div class="empty-history">No sales have been recorded yet.</div>';
+                return;
+            }
+            let html = '<table><thead><tr><th>Date</th><th>Title</th><th>Author</th><th>Price</th><th>Quantity</th></tr></thead><tbody>';
+            sales.forEach(sale => {
+                html += `<tr><td>${sale.date}</td><td>${sale.title}</td><td>${sale.author}</td><td>${sale.price}</td><td>${sale.quantity}</td></tr>`;
+            });
+            html += '</tbody></table>';
+            salesContent.innerHTML = html;
+        }
+        renderSales();
+    </script>
+</body>
+</html>

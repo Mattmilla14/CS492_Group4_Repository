@@ -1,0 +1,110 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bookstore - Shop</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+        header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+        nav { background: #541998; padding: 10px 0; text-align: center; }
+        nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        .container { max-width: 1000px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        .search-bar { margin-bottom: 30px; }
+        .search-bar input { width: 60%; padding: 10px; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; }
+        .book-list { display: flex; flex-wrap: wrap; gap: 24px; }
+        .book-card { background: #fafafa; border: 1px solid #eee; border-radius: 6px; width: 220px; padding: 16px; box-shadow: 0 1px 4px rgba(0,0,0,0.04); display: flex; flex-direction: column; align-items: center; }
+        .book-card img { width: 120px; height: 180px; object-fit: cover; margin-bottom: 12px; border-radius: 4px; }
+        .book-title { font-size: 1.1em; font-weight: bold; margin-bottom: 6px; text-align: center; }
+        .book-author { color: #555; font-size: 0.95em; margin-bottom: 8px; }
+        .book-price { color: #2d3e50; font-weight: bold; margin-bottom: 10px; }
+        .add-cart-btn { background: #8d31f5; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .add-cart-btn:hover { background: #541998; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Welcome to The Bookstore</h1>
+    </header>
+    <nav>
+        <a href="store.html">Home</a>
+        <a href="about.html">About</a>
+        <a href="cart.html" id="cartLink">Cart (<span id="cartCount">0</span>)</a>
+    </nav>
+    <div class="container">
+        <div class="search-bar">
+            <input type="text" id="searchInput" placeholder="Search for books by title, author, or ISBN">
+        </div>
+        <div class="book-list" id="bookList">
+            <!-- Example book cards -->
+            <div class="book-card">
+                <img src="https://covers.openlibrary.org/b/id/10523338-L.jpg" alt="Book Cover">
+                <div class="book-title">The Great Gatsby</div>
+                <div class="book-author">by F. Scott Fitzgerald</div>
+                <div class="book-price">$12.99</div>
+                <button class="add-cart-btn">Add to Cart</button>
+            </div>
+            <div class="book-card">
+                <img src="https://covers.openlibrary.org/b/id/11153227-L.jpg" alt="Book Cover">
+                <div class="book-title">To Kill a Mockingbird</div>
+                <div class="book-author">by Harper Lee</div>
+                <div class="book-price">$10.99</div>
+                <button class="add-cart-btn">Add to Cart</button>
+            </div>
+            <div class="book-card">
+                <img src="https://covers.openlibrary.org/b/id/10958372-L.jpg" alt="Book Cover">
+                <div class="book-title">1984</div>
+                <div class="book-author">by George Orwell</div>
+                <div class="book-price">$9.99</div>
+                <button class="add-cart-btn">Add to Cart</button>
+            </div>
+            <!-- Add more book cards as needed -->
+        </div>
+    </div>
+    <script>
+        // Simple search filter for book cards
+        const searchInput = document.getElementById('searchInput');
+        const bookList = document.getElementById('bookList');
+        const cartCount = document.getElementById('cartCount');
+        let cart = [];
+
+        searchInput.addEventListener('input', function() {
+            const filter = searchInput.value.toLowerCase();
+            const cards = bookList.querySelectorAll('.book-card');
+            cards.forEach(card => {
+                const title = card.querySelector('.book-title').textContent.toLowerCase();
+                const author = card.querySelector('.book-author').textContent.toLowerCase();
+                if (title.includes(filter) || author.includes(filter)) {
+                    card.style.display = '';
+                } else {
+                    card.style.display = 'none';
+                }
+            });
+        });
+
+        // Add to cart functionality
+        function updateCartCount() {
+            if (cart.length === 0) {
+                cartCount.textContent = 'empty';
+            } else {
+                cartCount.textContent = cart.length;
+            }
+            return cart.length;
+        }
+
+        bookList.addEventListener('click', function(e) {
+            if (e.target.classList.contains('add-cart-btn')) {
+                const card = e.target.closest('.book-card');
+                const title = card.querySelector('.book-title').textContent;
+                const author = card.querySelector('.book-author').textContent;
+                const price = card.querySelector('.book-price').textContent;
+                cart.push({ title, author, price });
+                updateCartCount();
+            }
+        });
+
+        // Initialize cart count on page load
+        updateCartCount();
+    </script>
+</body>
+</html>
