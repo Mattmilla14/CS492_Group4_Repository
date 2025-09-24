@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Sales History - Bookstore</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+        header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+        nav { background: #541998; padding: 10px 0; text-align: center; }
+        nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        .container { max-width: 900px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h2 { margin-top: 0; }
+        table { border-collapse: collapse; width: 100%; margin-top: 10px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background-color: #f2f2f2; }
+        .empty-history { text-align: center; color: #888; font-size: 1.2em; margin: 40px 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Sales History</h1>
+    </header>
+    <nav>
+        <a href="inventory.html">Inventory</a>
+        <a href="notifications.html">Notifications</a>
+    </nav>
+    <div class="container">
+        <h2>Completed Sales</h2>
+        <div id="salesContent"></div>
+    </div>
+    <script src="api.js"></script>
+    <script>
+        // Load sales history from backend
+        async function loadSales() {
+            console.log('Loading sales data...');
+            
+            try {
+                // Check if API is available
+                if (typeof API === 'undefined') {
+                    console.error('API not loaded');
+                    renderSales([]);
+                    return;
+                }
+                
+                console.log('API available, checking authentication...');
+                
+                // First, let's check if there are any sales at all
+                try {
+                    console.log('Checking total sales count...');
+                    const countResponse = await API.getSalesCount();
+                    console.log('Sales count response:', countResponse);
+                    
+                    if (countResponse && countResponse.success) {
+                        console.log(`Total sales in database: ${countResponse.total_count}`);
+                        
+                        if (countResponse.total_count === 0) {
+                            console.log('No sales have been made yet');
+                            renderSales([]);
+                            return;
+                        }
+                        // If there are recent sales, show them
+                        if (countResponse.recent_sales && countResponse.recent_sales.length > 0) {
+                            console.log('Showing recent sales from count endpoint');
+                            renderSales(countResponse.recent_sales);
+                            return;
+                        }
+                    }
+                } catch (countError) {
+                    console.log('Sales count check failed:', countError.message);
+                }
+                
+                // Next try to get user sales (if logged in)
+                let response = null;
+                try {
+                    console.log('Trying to get user sales...');
+                    response = await API.getUserSales();
+                    console.log('User sales response:', response);
+                } catch (userError) {
+                    console.log('User sales failed (probably not logged in):', userError.message);
+                }
+                
+                // If user sales didn't work, try admin sales
+                if (!response || !response.success) {
+                    try {
+                        console.log('Trying to get all sales (admin)...');
+                        response = await API.getAllSales();
+                        console.log('Admin sales response:', response);
+                    } catch (adminError) {
+                        console.log('Admin sales failed:', adminError.message);
+                        response = null;
+                    }
+                }
+                
+                if (response && response.success) {
+                    console.log('Sales data received:', response.data);
+                    renderSales(response.data);
+                } else {
+                    console.log('No API sales data available, using localStorage fallback');
+                    // Fallback to localStorage for demo purposes
+                    const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
+                    console.log('Local sales data:', localSales);
+                    renderSales(localSales);
+                }
+            } catch (error) {
+                console.error('Error loading sales:', error);
+                console.log('Using localStorage fallback due to error');
+                // Fallback to localStorage for demo purposes
+                const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
+                console.log('Local sales data (error fallback):', localSales);
+                renderSales(localSales);
+            }
+        }
+        
+        function renderSales(sales) {
+            const salesContent = document.getElementById('salesContent');
+            if (sales.length === 0) {
+                salesContent.innerHTML = '<div class="empty-history">No sales have been recorded yet.</div>';
+                return;
+            }
+            
+            // Calculate YTD grand total
+            let grandTotal = 0;
+            sales.forEach(sale => {
+                grandTotal += (sale.total_amount || 0);
+            });
+            
+            let html = `
+                <div style="background: #f0f8ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid #8d31f5;">
+                    <h3 style="margin: 0 0 5px 0; color: #8d31f5;">Year-to-Date Summary</h3>
+                    <div style="font-size: 1.1em; color: #333;">
+                        <strong>Total Sales: ${sales.length}</strong> | 
+                        <strong>Grand Total: $${grandTotal.toFixed(2)}</strong>
+                    </div>
+                </div>
+            `;
+            
+            html += '<table><thead><tr><th>Sale ID</th><th>Date</th><th>Customer</th><th>Items</th><th>Total</th></tr></thead><tbody>';
+            sales.forEach(sale => {
+                const saleDate = new Date(sale.sale_date).toLocaleDateString();
+                const customer = sale.user ? sale.user.username : (sale.customer_email || 'Guest');
+                
+                // Create items summary
+                let itemsSummary = '';
+                if (sale.items && sale.items.length > 0) {
+                    itemsSummary = sale.items.map(item => {
+                        const book = item.book || {};
+                        return `${book.title || 'Unknown'} (x${item.quantity})`;
+                    }).join(', ');
+                } else {
+                    itemsSummary = 'No items';
+                }
+                
+                html += `<tr>
+                    <td>${sale.id}</td>
+                    <td>${saleDate}</td>
+                    <td>${customer}</td>
+                    <td>${itemsSummary}</td>
+                    <td>$${(sale.total_amount || 0).toFixed(2)}</td>
+                </tr>`;
+            });
+            html += '</tbody></table>';
+            salesContent.innerHTML = html;
+        }
+        
+        // Load sales when page loads - but wait for API to be available
+        // Use a small delay to ensure API.js has loaded
+        setTimeout(loadSales, 100);
+    </script>
+</body>
+</html>

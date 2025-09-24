@@ -1,0 +1,150 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Your Cart - Bookstore</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+        header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+        nav { background: #541998; padding: 10px 0; text-align: center; }
+        nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        .container { max-width: 800px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h2 { margin-top: 0; }
+        table { width: 100%; border-collapse: collapse; margin-bottom: 20px; }
+        th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
+        th { background: #f2f2f2; }
+        .remove-btn { background: #d9534f; color: #fff; border: none; padding: 6px 12px; border-radius: 4px; cursor: pointer; }
+        .remove-btn:hover { background: #b52b27; }
+        .checkout-btn { background: #8d31f5; color: #fff; border: none; padding: 10px 24px; border-radius: 4px; cursor: pointer; font-size: 1.1em; }
+        .checkout-btn:hover { background: #541998; }
+        .empty-cart { text-align: center; color: #888; font-size: 1.2em; margin: 40px 0; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Your Cart</h1>
+    </header>
+    <nav>
+        <a href="store.html">Back to Shop</a>
+    </nav>
+    <div class="container">
+        <h2>Items in Your Cart</h2>
+        <div id="cartContent"></div>
+        <button class="checkout-btn" id="checkoutBtn">Checkout</button>
+    </div>
+    <script src="api.js"></script>
+    <script>
+        // Use localStorage for cart persistence
+        function getCart() {
+            return JSON.parse(localStorage.getItem('cart') || '[]');
+        }
+        function setCart(cart) {
+            localStorage.setItem('cart', JSON.stringify(cart));
+        }
+        function renderCart() {
+            const cart = getCart();
+            const cartContent = document.getElementById('cartContent');
+            if (cart.length === 0) {
+                cartContent.innerHTML = '<div class="empty-cart">Your cart is empty.</div>';
+                document.getElementById('checkoutBtn').style.display = 'none';
+                return;
+            }
+            document.getElementById('checkoutBtn').style.display = '';
+            
+            let total = 0;
+            let html = '<table><thead><tr><th>Title</th><th>Author</th><th>Price</th><th>Remove</th></tr></thead><tbody>';
+            cart.forEach((item, idx) => {
+                // Handle both numeric prices and string prices with dollar signs
+                let price = 0;
+                if (typeof item.price === 'number') {
+                    price = item.price;
+                } else if (typeof item.price === 'string') {
+                    // Remove dollar sign and parse
+                    price = parseFloat(item.price.replace('$', '')) || 0;
+                } else {
+                    price = 0;
+                }
+                
+                total += price;
+                html += `<tr><td>${item.title}</td><td>${item.author}</td><td>$${price.toFixed(2)}</td><td><button class="remove-btn" data-idx="${idx}">Remove</button></td></tr>`;
+            });
+            html += '</tbody></table>';
+            html += `<div style="text-align: right; margin-top: 15px; font-size: 1.2em; font-weight: bold;">Total: $${total.toFixed(2)}</div>`;
+            cartContent.innerHTML = html;
+        }
+        
+        document.getElementById('cartContent').addEventListener('click', function(e) {
+            if (e.target.classList.contains('remove-btn')) {
+                const idx = e.target.getAttribute('data-idx');
+                const cart = getCart();
+                cart.splice(idx, 1);
+                setCart(cart);
+                renderCart();
+            }
+        });
+        
+        document.getElementById('checkoutBtn').addEventListener('click', async function() {
+            const cart = getCart();
+            if (cart.length === 0) {
+                alert('Your cart is empty!');
+                return;
+            }
+            
+            // Check if API is available
+            if (typeof API === 'undefined') {
+                alert('API not loaded. Please refresh the page and try again.');
+                console.error('API object is not defined');
+                return;
+            }
+            
+            // Disable the button to prevent double-clicks
+            this.disabled = true;
+            this.textContent = 'Processing...';
+            
+            try {
+                // Prepare sale data
+                const saleData = {
+                    items: cart.map(item => ({
+                        id: item.id,
+                        quantity: 1 // Currently assuming quantity of 1, you can modify this
+                    })),
+                    customer_email: prompt('Enter your email address for the receipt (optional):') || null
+                };
+                
+                console.log('Sending sale data:', saleData);
+                
+                // Make the API call to create the sale
+                const response = await API.createSale(saleData);
+                
+                console.log('API response:', response);
+                
+                if (response && response.success) {
+                    // Clear the cart
+                    setCart([]);
+                    renderCart();
+                    
+                    // Show success message
+                    alert(`Checkout successful! Sale ID: ${response.data.id}\nTotal: $${response.data.total_amount.toFixed(2)}`);
+                    
+                    // Optionally redirect to a success page or back to the store
+                    window.location.href = 'store.html';
+                } else {
+                    const errorMsg = response ? (response.error || 'Unknown error') : 'No response from server';
+                    alert('Checkout failed: ' + errorMsg);
+                    console.error('Checkout failed:', response);
+                }
+            } catch (error) {
+                console.error('Checkout error:', error);
+                alert('Checkout failed: ' + error.message + '\nCheck the console for more details.');
+            } finally {
+                // Re-enable the button
+                this.disabled = false;
+                this.textContent = 'Checkout';
+            }
+        });
+        
+        renderCart();
+    </script>
+</body>
+</html>

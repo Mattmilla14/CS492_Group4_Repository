@@ -1,0 +1,137 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Bookstore – Quick Start</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <style>
+    body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+    header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+    nav { background: #541998; padding: 10px 0; text-align: center; }
+    nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+    .container { max-width: 600px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+    h2 { margin-top: 0; }
+    form { margin-bottom: 24px; }
+    label { display: block; margin-bottom: 10px; font-weight: 500; }
+    input[type="email"], input[type="password"], input[type="text"] {
+      width: 100%; padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; margin-top: 4px;
+    }
+    button { background: #8d31f5; color: #fff; border: none; border-radius: 4px; padding: 10px 20px; font-size: 1em; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #541998; }
+    pre { background: #f2f2f2; padding: 12px; border-radius: 4px; font-size: 0.98em; }
+    .health-row { margin-bottom: 18px; }
+    .divider { border: none; border-top: 1px solid #eee; margin: 24px 0; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>Bookstore Quick Start</h1>
+  </header>
+  <nav>
+  </nav>
+  <div class="container">
+    <div class="health-row">
+      <strong>Health:</strong> <button id="healthBtn">Check</button> <span id="healthOut"></span>
+    </div>
+    <hr class="divider">
+    <h2>Register</h2>
+    <form id="regForm">
+      <label>Username
+        <input type="text" id="regUsername" required>
+      </label>
+      <label>Email
+        <input type="email" id="regEmail" required>
+      </label>
+      <label>Password
+        <input type="password" id="regPass" required minlength="8">
+      </label>
+      <button type="submit">Create Account</button>
+    </form>
+    <pre id="regOut"></pre>
+    <h2>Login</h2>
+    <form id="loginForm">
+      <label>Username
+        <input type="text" id="loginUsername" required>
+      </label>
+      <label>Password
+        <input type="password" id="loginPass" required>
+      </label>
+      <button type="submit">Sign In</button>
+    </form>
+    <pre id="loginOut"></pre>
+  </div>
+  <script>
+  const BASE = "http://localhost:5000/api";
+    document.getElementById("healthBtn").onclick = async () => {
+      const r = await fetch(`${BASE}/health`);
+      document.getElementById("healthOut").textContent = r.ok ? "ok" : "down";
+    };
+    document.getElementById("regForm").onsubmit = async (e) => {
+      e.preventDefault();
+      const username = document.getElementById("regUsername").value;
+      const email = document.getElementById("regEmail").value;
+      const password = document.getElementById("regPass").value;
+      try {
+        const r = await fetch(`${BASE}/register`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+          body: JSON.stringify({ username, email, password })
+        });
+        const data = await r.json();
+        document.getElementById("regOut").textContent = JSON.stringify(data, null, 2);
+
+        // Save token if returned
+        if (data && (data.token || data.access_token)) {
+          const token = data.token || data.access_token;
+          try { localStorage.setItem('jwt', token); } catch (_) {}
+        }
+
+        // If the registered user has a role, redirect based on role
+        const user = data.user || (data.body && data.body.user) || null;
+        if (user && user.role) {
+          if (user.role.toLowerCase() === 'admin') {
+            window.location.href = 'inventory.html';
+          } else {
+            window.location.href = 'store.html';
+          }
+        }
+      } catch (err) {
+        document.getElementById("regOut").textContent = 'Registration failed: ' + err.message;
+      }
+    };
+    document.getElementById("loginForm").onsubmit = async (e) => {
+    e.preventDefault();
+    const username = document.getElementById("loginUsername").value;
+    const password = document.getElementById("loginPass").value;
+      try {
+          const r = await fetch(`${BASE}/login`, {
+          method: "POST",
+          headers: {"Content-Type": "application/json"},
+      body: JSON.stringify({ username, password })
+        });
+        const data = await r.json();
+        document.getElementById("loginOut").textContent = JSON.stringify(data, null, 2);
+
+        // If backend returned a token, save it to localStorage for API use
+        if (data && (data.token || data.access_token)) {
+          const token = data.token || data.access_token;
+          try { localStorage.setItem('jwt', token); } catch (_) {}
+        }
+
+        // If backend returned user info with role, redirect admins to inventory
+        // Accept either data.user or data.body.user depending on backend shape
+        const user = data.user || (data.body && data.body.user) || null;
+        if (user && user.role && user.role.toLowerCase() === 'admin') {
+          // Redirect to inventory page for admins
+          window.location.href = 'inventory.html';
+        } else if (user && user.role && user.role.toLowerCase() === 'user') {
+          // Redirect to store page for regular users
+          window.location.href = 'store.html';
+        }
+      } catch (err) {
+        document.getElementById("loginOut").textContent = 'Login failed: ' + err.message;
+      }
+    };
+  </script>
+</body>
+</html>

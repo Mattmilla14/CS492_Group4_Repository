@@ -1,0 +1,1 @@
+SQLite database will be created here at runtime as 'bookstore.db'. Do not commit this folder.
