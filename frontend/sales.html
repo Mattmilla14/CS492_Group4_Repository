@@ -11,6 +11,51 @@
         nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
         .container { max-width: 900px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
         h2 { margin-top: 0; }
+        
+        /* Filter Controls */
+        .filter-section {
+            background: #f8f9fa;
+            padding: 20px;
+            border-radius: 8px;
+            margin-bottom: 25px;
+            border: 1px solid #dee2e6;
+        }
+        .filter-controls {
+            display: flex;
+            gap: 15px;
+            align-items: center;
+            flex-wrap: wrap;
+        }
+        .filter-controls label {
+            font-weight: bold;
+            color: #333;
+        }
+        .filter-controls select, .filter-controls input {
+            padding: 8px 12px;
+            border: 1px solid #ccc;
+            border-radius: 4px;
+            font-size: 0.95em;
+        }
+        .filter-controls button {
+            background: #8d31f5;
+            color: white;
+            border: none;
+            padding: 9px 18px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 0.95em;
+            font-weight: bold;
+        }
+        .filter-controls button:hover {
+            background: #541998;
+        }
+        .clear-filter-btn {
+            background: #6c757d !important;
+        }
+        .clear-filter-btn:hover {
+            background: #545b62 !important;
+        }
+        
         table { border-collapse: collapse; width: 100%; margin-top: 10px; }
         th, td { border: 1px solid #ccc; padding: 10px; text-align: left; }
         th { background-color: #f2f2f2; }
@@ -24,13 +69,122 @@
     <nav>
         <a href="inventory.html">Inventory</a>
         <a href="notifications.html">Notifications</a>
-    </nav>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
     <div class="container">
         <h2>Completed Sales</h2>
+        
+        <!-- Filter Section -->
+        <div class="filter-section">
+            <div class="filter-controls">
+                <label for="timeframeFilter">Filter by Timeframe:</label>
+                <select id="timeframeFilter">
+                    <option value="all">All Time</option>
+                    <option value="today">Today</option>
+                    <option value="week">This Week</option>
+                    <option value="month">This Month</option>
+                    <option value="quarter">This Quarter</option>
+                    <option value="year">This Year</option>
+                    <option value="custom">Custom Range</option>
+                </select>
+                
+                <div id="customDateRange" style="display: none;">
+                    <label for="startDate">From:</label>
+                    <input type="date" id="startDate">
+                    <label for="endDate">To:</label>
+                    <input type="date" id="endDate">
+                </div>
+                
+                <button onclick="applyTimeframeFilter()">Apply Filter</button>
+                <button class="clear-filter-btn" onclick="clearFilter()">Clear Filter</button>
+            </div>
+        </div>
+        
         <div id="salesContent"></div>
     </div>
     <script src="api.js"></script>
     <script>
+        let allSalesData = []; // Store all sales for filtering
+        
+        // Show/hide custom date range inputs
+        document.addEventListener('DOMContentLoaded', function() {
+            const timeframeFilter = document.getElementById('timeframeFilter');
+            const customDateRange = document.getElementById('customDateRange');
+            
+            timeframeFilter.addEventListener('change', function() {
+                if (this.value === 'custom') {
+                    customDateRange.style.display = 'flex';
+                    customDateRange.style.gap = '10px';
+                    customDateRange.style.alignItems = 'center';
+                } else {
+                    customDateRange.style.display = 'none';
+                }
+            });
+        });
+        
+        // Filter sales based on selected timeframe
+        function applyTimeframeFilter() {
+            const timeframe = document.getElementById('timeframeFilter').value;
+            let filteredSales = [...allSalesData];
+            
+            if (timeframe !== 'all') {
+                const now = new Date();
+                let startDate, endDate;
+                
+                switch (timeframe) {
+                    case 'today':
+                        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+                        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + 1);
+                        break;
+                    case 'week':
+                        const dayOfWeek = now.getDay();
+                        startDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() - dayOfWeek);
+                        endDate = new Date(now.getFullYear(), now.getMonth(), now.getDate() + (7 - dayOfWeek));
+                        break;
+                    case 'month':
+                        startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+                        endDate = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+                        break;
+                    case 'quarter':
+                        const quarter = Math.floor(now.getMonth() / 3);
+                        startDate = new Date(now.getFullYear(), quarter * 3, 1);
+                        endDate = new Date(now.getFullYear(), quarter * 3 + 3, 0);
+                        break;
+                    case 'year':
+                        startDate = new Date(now.getFullYear(), 0, 1);
+                        endDate = new Date(now.getFullYear(), 11, 31);
+                        break;
+                    case 'custom':
+                        const startInput = document.getElementById('startDate').value;
+                        const endInput = document.getElementById('endDate').value;
+                        if (!startInput || !endInput) {
+                            alert('Please select both start and end dates for custom range.');
+                            return;
+                        }
+                        startDate = new Date(startInput);
+                        endDate = new Date(endInput);
+                        endDate.setHours(23, 59, 59, 999); // Include the entire end date
+                        break;
+                }
+                
+                filteredSales = allSalesData.filter(sale => {
+                    const saleDate = new Date(sale.sale_date);
+                    return saleDate >= startDate && saleDate <= endDate;
+                });
+            }
+            
+            renderSales(filteredSales);
+        }
+        
+        // Clear filter and show all sales
+        function clearFilter() {
+            document.getElementById('timeframeFilter').value = 'all';
+            document.getElementById('customDateRange').style.display = 'none';
+            document.getElementById('startDate').value = '';
+            document.getElementById('endDate').value = '';
+            renderSales(allSalesData);
+        }
+        
         // Load sales history from backend
         async function loadSales() {
             console.log('Loading sales data...');
@@ -56,12 +210,14 @@
                         
                         if (countResponse.total_count === 0) {
                             console.log('No sales have been made yet');
+                            allSalesData = [];
                             renderSales([]);
                             return;
                         }
                         // If there are recent sales, show them
                         if (countResponse.recent_sales && countResponse.recent_sales.length > 0) {
                             console.log('Showing recent sales from count endpoint');
+                            allSalesData = countResponse.recent_sales;
                             renderSales(countResponse.recent_sales);
                             return;
                         }
@@ -94,12 +250,14 @@
                 
                 if (response && response.success) {
                     console.log('Sales data received:', response.data);
+                    allSalesData = response.data;
                     renderSales(response.data);
                 } else {
                     console.log('No API sales data available, using localStorage fallback');
                     // Fallback to localStorage for demo purposes
                     const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
                     console.log('Local sales data:', localSales);
+                    allSalesData = localSales;
                     renderSales(localSales);
                 }
             } catch (error) {
@@ -108,6 +266,7 @@
                 // Fallback to localStorage for demo purposes
                 const localSales = JSON.parse(localStorage.getItem('sales') || '[]');
                 console.log('Local sales data (error fallback):', localSales);
+                allSalesData = localSales;
                 renderSales(localSales);
             }
         }
@@ -115,19 +274,29 @@
         function renderSales(sales) {
             const salesContent = document.getElementById('salesContent');
             if (sales.length === 0) {
-                salesContent.innerHTML = '<div class="empty-history">No sales have been recorded yet.</div>';
+                const timeframe = document.getElementById('timeframeFilter').value;
+                const message = timeframe === 'all' ? 
+                    'No sales have been recorded yet.' : 
+                    `No sales found for the selected timeframe (${timeframe}).`;
+                salesContent.innerHTML = `<div class="empty-history">${message}</div>`;
                 return;
             }
             
-            // Calculate YTD grand total
+            // Calculate filtered totals
             let grandTotal = 0;
             sales.forEach(sale => {
                 grandTotal += (sale.total_amount || 0);
             });
             
+            // Get current filter info
+            const timeframe = document.getElementById('timeframeFilter').value;
+            const filterLabel = timeframe === 'all' ? 'Year-to-Date' : 
+                                timeframe === 'custom' ? 'Custom Range' : 
+                                `${timeframe.charAt(0).toUpperCase() + timeframe.slice(1)}`;
+            
             let html = `
                 <div style="background: #f0f8ff; padding: 15px; margin-bottom: 20px; border-radius: 8px; border-left: 4px solid #8d31f5;">
-                    <h3 style="margin: 0 0 5px 0; color: #8d31f5;">Year-to-Date Summary</h3>
+                    <h3 style="margin: 0 0 5px 0; color: #8d31f5;">${filterLabel} Summary</h3>
                     <div style="font-size: 1.1em; color: #333;">
                         <strong>Total Sales: ${sales.length}</strong> | 
                         <strong>Grand Total: $${grandTotal.toFixed(2)}</strong>
@@ -167,5 +336,8 @@
         // Use a small delay to ensure API.js has loaded
         setTimeout(loadSales, 100);
     </script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>

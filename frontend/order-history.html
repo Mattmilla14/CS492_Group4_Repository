@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Order History - Bookstore</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 0; background: #f8f8f8; }
+        header { background: #8d31f5; color: #fff; padding: 20px 0; text-align: center; }
+        nav { background: #541998; padding: 10px 0; text-align: center; }
+        nav a { color: #fff; margin: 0 15px; text-decoration: none; font-weight: bold; }
+        .container { max-width: 1000px; margin: 30px auto; background: #fff; padding: 30px; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
+        h2 { margin-top: 0; color: #333; }
+        .login-prompt { text-align: center; color: #666; font-size: 1.1em; margin: 40px 0; }
+        .login-prompt a { color: #8d31f5; text-decoration: none; font-weight: bold; }
+        .login-prompt a:hover { text-decoration: underline; }
+        .order-card { background: #fafafa; border: 1px solid #eee; border-radius: 8px; padding: 20px; margin-bottom: 20px; box-shadow: 0 2px 4px rgba(0,0,0,0.06); }
+        .order-header { display: flex; justify-content: between; align-items: center; margin-bottom: 15px; padding-bottom: 10px; border-bottom: 2px solid #8d31f5; }
+        .order-id { font-size: 1.2em; font-weight: bold; color: #8d31f5; }
+        .order-date { color: #666; font-size: 0.95em; }
+        .order-total { font-size: 1.1em; font-weight: bold; color: #2d3e50; }
+        .order-items { margin-top: 15px; }
+        .item { display: flex; align-items: center; padding: 10px 0; border-bottom: 1px solid #eee; }
+        .item:last-child { border-bottom: none; }
+        .item-image { width: 60px; height: 90px; object-fit: cover; border-radius: 4px; margin-right: 15px; }
+        .item-details { flex-grow: 1; }
+        .item-title { font-weight: bold; color: #333; margin-bottom: 4px; }
+        .item-author { color: #666; font-size: 0.9em; margin-bottom: 4px; }
+        .item-price { color: #2d3e50; font-weight: bold; }
+        .item-quantity { color: #666; font-size: 0.9em; }
+        .empty-history { text-align: center; color: #888; font-size: 1.2em; margin: 40px 0; }
+        .loading { text-align: center; color: #666; font-size: 1.1em; margin: 40px 0; }
+        .error { text-align: center; color: #d1242f; font-size: 1.1em; margin: 40px 0; padding: 20px; background: #ffeaea; border-radius: 8px; border: 1px solid #f5c6cb; }
+        .user-info { background: #e8f4fd; padding: 15px; border-radius: 8px; margin-bottom: 20px; border-left: 4px solid #8d31f5; }
+        .user-info h3 { margin: 0 0 5px 0; color: #8d31f5; }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>Your Order History</h1>
+    </header>
+    <nav>
+        <a href="store.html">Back to Shop</a>
+        <a href="cart.html" id="cartLink">Cart (<span id="cartCount">0</span>)</a>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
+    <div class="container">
+        <h2>My Orders</h2>
+        <div id="orderContent">
+            <div class="loading">Loading your orders...</div>
+        </div>
+    </div>
+    
+    <script src="api.js"></script>
+    <script>
+        // Cart management functions
+        function getCart() { 
+            try { 
+                return JSON.parse(localStorage.getItem('cart') || '[]'); 
+            } catch (_) { 
+                return []; 
+            } 
+        }
+        
+        function updateCartCount() {
+            const cart = getCart();
+            const cartCount = document.getElementById('cartCount');
+            if (cartCount) {
+                cartCount.textContent = cart.length === 0 ? 'empty' : cart.length;
+            }
+        }
+        
+        // Check if user is logged in and load their order history
+        async function loadOrderHistory() {
+            const orderContent = document.getElementById('orderContent');
+            
+            try {
+                // Check if user is logged in by trying to get their profile
+                let currentUser = null;
+                try {
+                    const profileResponse = await API.profile();
+                    if (profileResponse && profileResponse.success) {
+                        currentUser = profileResponse.user;
+                    }
+                } catch (profileError) {
+                    console.log('User not logged in:', profileError.message);
+                }
+                
+                if (!currentUser) {
+                    // User not logged in
+                    orderContent.innerHTML = `
+                        <div class="login-prompt">
+                            <h3>Please log in to view your order history</h3>
+                            <p>You need to be logged in to see your previous orders.</p>
+                            <p><a href="index.html">Go to Login</a></p>
+                        </div>
+                    `;
+                    return;
+                }
+                
+                // Show user info
+                orderContent.innerHTML = `
+                    <div class="user-info">
+                        <h3>Welcome back, ${currentUser.username}!</h3>
+                        <p>Email: ${currentUser.email}</p>
+                    </div>
+                    <div class="loading">Loading your orders...</div>
+                `;
+                
+                // Get user's order history
+                console.log('Loading order history for user:', currentUser.id);
+                const ordersResponse = await API.getUserSales();
+                console.log('Orders response:', ordersResponse);
+                
+                if (ordersResponse && ordersResponse.success) {
+                    renderOrders(ordersResponse.data, currentUser);
+                } else {
+                    orderContent.innerHTML = `
+                        <div class="user-info">
+                            <h3>Welcome back, ${currentUser.username}!</h3>
+                            <p>Email: ${currentUser.email}</p>
+                        </div>
+                        <div class="error">
+                            Failed to load your orders: ${ordersResponse ? ordersResponse.error : 'Unknown error'}
+                        </div>
+                    `;
+                }
+                
+            } catch (error) {
+                console.error('Error loading order history:', error);
+                orderContent.innerHTML = `
+                    <div class="error">
+                        Error loading order history: ${error.message}
+                    </div>
+                `;
+            }
+        }
+        
+        function renderOrders(orders, user) {
+            const orderContent = document.getElementById('orderContent');
+            
+            let html = `
+                <div class="user-info">
+                    <h3>Welcome back, ${user.username}!</h3>
+                    <p>Email: ${user.email}</p>
+                </div>
+            `;
+            
+            if (orders.length === 0) {
+                html += '<div class="empty-history">You haven\'t placed any orders yet.</div>';
+                orderContent.innerHTML = html;
+                return;
+            }
+            
+            orders.forEach(order => {
+                const orderDate = new Date(order.sale_date).toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'long',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit'
+                });
+                
+                html += `
+                    <div class="order-card">
+                        <div class="order-header">
+                            <div>
+                                <div class="order-id">Order #${order.id}</div>
+                                <div class="order-date">${orderDate}</div>
+                            </div>
+                            <div class="order-total">Total: $${order.total_amount.toFixed(2)}</div>
+                        </div>
+                        <div class="order-items">
+                `;
+                
+                // Add items to the order
+                if (order.items && order.items.length > 0) {
+                    order.items.forEach(item => {
+                        const book = item.book || {};
+                        const imgSrc = book.cover_url || `https://covers.openlibrary.org/b/isbn/${book.isbn}-L.jpg`;
+                        
+                        html += `
+                            <div class="item">
+                                <img src="${imgSrc}" alt="Book Cover" class="item-image">
+                                <div class="item-details">
+                                    <div class="item-title">${book.title || 'Unknown Title'}</div>
+                                    <div class="item-author">by ${book.author || 'Unknown Author'}</div>
+                                    <div class="item-price">$${item.price_at_time.toFixed(2)}</div>
+                                    <div class="item-quantity">Quantity: ${item.quantity}</div>
+                                </div>
+                            </div>
+                        `;
+                    });
+                } else {
+                    html += '<div class="item">No items found for this order</div>';
+                }
+                
+                html += `
+                        </div>
+                    </div>
+                `;
+            });
+            
+            orderContent.innerHTML = html;
+        }
+        
+        // Initialize page
+        function initPage() {
+            updateCartCount();
+            loadOrderHistory();
+        }
+        
+        // Load order history and update cart count when page loads
+        // Use a small delay to ensure API.js has loaded
+        setTimeout(initPage, 100);
+    </script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
+</body>
+</html>

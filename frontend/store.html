@@ -18,8 +18,19 @@
         .book-title { font-size: 1.1em; font-weight: bold; margin-bottom: 6px; text-align: center; }
         .book-author { color: #555; font-size: 0.95em; margin-bottom: 8px; }
         .book-price { color: #2d3e50; font-weight: bold; margin-bottom: 10px; }
-        .add-cart-btn { background: #8d31f5; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: background 0.2s; }
+        .add-cart-btn { background: #8d31f5; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: background 0.2s; margin-bottom: 8px; }
         .add-cart-btn:hover { background: #541998; }
+        .add-cart-btn:disabled { background: #ccc; color: #666; cursor: not-allowed; }
+        .add-cart-btn:disabled:hover { background: #ccc; }
+        .buy-now-btn { background: #28a745; color: #fff; border: none; padding: 8px 16px; border-radius: 4px; cursor: pointer; transition: background 0.2s; font-weight: bold; }
+        .buy-now-btn:hover { background: #218838; }
+        .buy-now-btn:disabled { background: #ccc; color: #666; cursor: not-allowed; }
+        .buy-now-btn:disabled:hover { background: #ccc; }
+        .button-group { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+        .book-card.out-of-stock { opacity: 0.7; }
+        .stock-status { font-size: 0.9em; margin-bottom: 8px; font-weight: bold; }
+        .stock-status.in-stock { color: #1a7f37; }
+        .stock-status.out-of-stock { color: #d1242f; }
         .in-cart-msg { margin-top: 8px; color: #1a7f37; font-size: 0.9em; display: none; }
         .in-cart-msg.visible { display: block; }
     </style>
@@ -31,8 +42,10 @@
     <nav>
         <a href="store.html">Home</a>
         <a href="about.html">About</a>
+        <a href="order-history.html">My Orders</a>
         <a href="cart.html" id="cartLink">Cart (<span id="cartCount">0</span>)</a>
-    </nav>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
     <div class="container">
         <div class="search-bar">
             <input type="text" id="searchInput" placeholder="Search for books by title, author, or ISBN">
@@ -68,19 +81,34 @@
                 const title = book.title || 'Untitled';
                 const author = book.author || 'Unknown';
                 const price = (typeof book.price !== 'undefined') ? `$${parseFloat(book.price).toFixed(2)}` : '$0.00';
-                const inStock = (book.stock_quantity || 0) > 0;
+                const stockQuantity = book.stock_quantity || 0;
+                const inStock = stockQuantity > 0;
+
+                // Add out-of-stock class for styling
+                if (!inStock) {
+                    card.classList.add('out-of-stock');
+                }
 
                 card.innerHTML = `
                     <img src="${imgSrc}" alt="Book Cover">
                     <div class="book-title">${title}</div>
                     <div class="book-author">by ${author}</div>
                     <div class="book-price">${price}</div>
+                    <div class="stock-status ${inStock ? 'in-stock' : 'out-of-stock'}">
+                        ${inStock ? `in stock` : 'Out of Stock'}
+                    </div>
                 `;
 
                 const btn = document.createElement('button');
                 btn.className = 'add-cart-btn';
-                btn.textContent = inStock ? 'Add to Cart' : 'Out of stock';
+                btn.textContent = inStock ? 'Add to Cart' : 'Out of Stock';
                 if (!inStock) btn.disabled = true;
+
+                // Create Buy Now button
+                const buyNowBtn = document.createElement('button');
+                buyNowBtn.className = 'buy-now-btn';
+                buyNowBtn.textContent = 'Buy Now';
+                if (!inStock) buyNowBtn.disabled = true;
 
                 // message element to show under the button when item is in cart
                 const msg = document.createElement('div');
@@ -114,7 +142,42 @@
                     updateMsg();
                 });
 
-                card.appendChild(btn);
+                // Buy Now button click handler
+                buyNowBtn.addEventListener('click', () => {
+                    if (!inStock) return;
+                    
+                    // Add item to cart first
+                    const item = { 
+                        id: book.id, 
+                        isbn: book.isbn, 
+                        title, 
+                        author, 
+                        price: parseFloat(book.price) || 0
+                    };
+                    
+                    // Check if item is already in cart
+                    const currentCart = getCart();
+                    const existingItem = book.id ? 
+                        currentCart.find(i => i.id === book.id) : 
+                        currentCart.find(i => i.isbn && book.isbn && i.isbn === book.isbn);
+                    
+                    if (!existingItem) {
+                        currentCart.push(item);
+                        setCart(currentCart);
+                        updateCartCount();
+                    }
+                    
+                    // Redirect to checkout
+                    window.location.href = 'cart.html';
+                });
+
+                // Create button group container
+                const buttonGroup = document.createElement('div');
+                buttonGroup.className = 'button-group';
+                buttonGroup.appendChild(btn);
+                buttonGroup.appendChild(buyNowBtn);
+
+                card.appendChild(buttonGroup);
                 card.appendChild(msg);
                 // show initial state
                 updateMsg();
@@ -126,8 +189,8 @@
                     const res = await window.API.getBooks();
                     const books = (res && res.data) ? res.data : [];
                     bookList.innerHTML = '';
-                    // Only render books that have stock_quantity > 0
-                    books.filter(b => (b.stock_quantity || 0) > 0).forEach(b => bookList.appendChild(createCard(b)));
+                    // Render all books, including those with 0 stock
+                    books.forEach(b => bookList.appendChild(createCard(b)));
                 } catch (err) {
                     console.error('Failed to load books:', err);
                     // Fallback: keep the page empty or show a message
@@ -150,5 +213,8 @@
             loadBooks();
         }
     </script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>

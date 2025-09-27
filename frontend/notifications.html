@@ -17,7 +17,37 @@
         .notification-list .order { border-left-color: #31b0f5; }
         .notification-list .system { border-left-color: #f5a631; }
         .notification-list .low-inventory { border-left-color: #d9534f; }
+        .notification-list .low-inventory.critical { border-left-color: #dc3545; background: #f8d7da; }
+        .notification-list .low-inventory.warning { border-left-color: #ffc107; background: #fff3cd; }
         .empty-msg { color: #888; font-style: italic; margin: 10px 0 0 0; }
+        .refresh-btn { 
+            background: #8d31f5; 
+            color: white; 
+            border: none; 
+            padding: 8px 16px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin-bottom: 15px; 
+            font-size: 0.9em;
+        }
+        .refresh-btn:hover { background: #541998; }
+        .clear-btn { 
+            background: #6c757d; 
+            color: white; 
+            border: none; 
+            padding: 6px 12px; 
+            border-radius: 4px; 
+            cursor: pointer; 
+            margin-left: 10px; 
+            font-size: 0.8em;
+        }
+        .clear-btn:hover { background: #545b62; }
+        .notification-header { 
+            display: flex; 
+            justify-content: space-between; 
+            align-items: center; 
+            margin-bottom: 10px;
+        }
     </style>
 </head>
 <body>
@@ -27,7 +57,8 @@
     <nav>
         <a href="inventory.html">Inventory</a>
         <a href="sales.html">Sales History</a>
-    </nav>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
     <div class="container">
         <div class="notification-section">
             <h2>Order Notifications</h2>
@@ -40,7 +71,13 @@
             <div class="empty-msg" id="systemEmpty">No system notifications.</div>
         </div>
         <div class="notification-section">
-            <h2>Low Inventory Notifications</h2>
+            <div class="notification-header">
+                <h2>Low Inventory Notifications</h2>
+                <div>
+                    <button class="refresh-btn" onclick="refreshLowInventoryNotifications()">Refresh</button>
+                    <button class="clear-btn" onclick="clearLowInventoryNotifications()">Clear All</button>
+                </div>
+            </div>
             <ul class="notification-list" id="lowInventoryNotifications"></ul>
             <div class="empty-msg" id="lowInventoryEmpty">No low inventory notifications.</div>
         </div>
@@ -54,10 +91,26 @@
         const systemNotifications = [
             { message: "System maintenance scheduled for Sept 15, 2025.", date: "2025-09-10" }
         ];
-        const lowInventoryNotifications = [
-            { message: "'The Great Gatsby' is low on stock (2 left).", date: "2025-09-12" },
-            { message: "'1984' is out of stock!", date: "2025-09-12" }
-        ];
+
+        // Load real low inventory notifications from localStorage
+        function loadLowInventoryNotifications() {
+            const stored = localStorage.getItem('lowStockNotifications');
+            if (!stored) return [];
+            
+            try {
+                const notifications = JSON.parse(stored);
+                // Filter to show only recent notifications (last 7 days)
+                const sevenDaysAgo = new Date();
+                sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 7);
+                
+                return notifications
+                    .filter(notif => new Date(notif.date) >= sevenDaysAgo)
+                    .sort((a, b) => new Date(b.date) - new Date(a.date)); // Most recent first
+            } catch (e) {
+                console.error('Error loading low stock notifications:', e);
+                return [];
+            }
+        }
 
         function renderNotifications(list, elementId, emptyId, type) {
             const ul = document.getElementById(elementId);
@@ -76,9 +129,114 @@
             });
         }
 
+        function renderLowInventoryNotifications(list) {
+            const ul = document.getElementById('lowInventoryNotifications');
+            const emptyMsg = document.getElementById('lowInventoryEmpty');
+            ul.innerHTML = '';
+            
+            if (list.length === 0) {
+                emptyMsg.style.display = '';
+                return;
+            }
+            
+            emptyMsg.style.display = 'none';
+            
+            list.forEach(notification => {
+                const li = document.createElement('li');
+                li.classList.add('low-inventory');
+                
+                // Add specific styling based on alert level
+                if (notification.level === 'critical') {
+                    li.classList.add('critical');
+                } else if (notification.level === 'warning') {
+                    li.classList.add('warning');
+                }
+                
+                // Format the date nicely
+                const date = new Date(notification.date);
+                const formattedDate = date.toLocaleDateString('en-US', {
+                    year: 'numeric',
+                    month: 'short',
+                    day: 'numeric'
+                });
+                
+                // Add time if notification is from today
+                const today = new Date().toDateString();
+                const notifDay = date.toDateString();
+                let timeDisplay = '';
+                
+                if (today === notifDay) {
+                    timeDisplay = ` at ${date.toLocaleTimeString('en-US', {
+                        hour: 'numeric',
+                        minute: '2-digit',
+                        hour12: true
+                    })}`;
+                }
+                
+                li.innerHTML = `
+                    <div>
+                        <strong>${formattedDate}${timeDisplay}:</strong> ${notification.message}
+                    </div>
+                    <div style="font-size: 0.85em; color: #666; margin-top: 4px;">
+                        Current Stock: ${notification.stock} items | Alert Level: ${notification.level.toUpperCase()}
+                    </div>
+                `;
+                ul.appendChild(li);
+            });
+        }
+
+        // Function to refresh low inventory notifications
+        function refreshLowInventoryNotifications() {
+            const notifications = loadLowInventoryNotifications();
+            renderLowInventoryNotifications(notifications);
+            
+            // Show feedback
+            const refreshBtn = document.querySelector('.refresh-btn');
+            const originalText = refreshBtn.textContent;
+            refreshBtn.textContent = 'Refreshed!';
+            refreshBtn.style.background = '#28a745';
+            
+            setTimeout(() => {
+                refreshBtn.textContent = originalText;
+                refreshBtn.style.background = '#8d31f5';
+            }, 1500);
+        }
+
+        // Function to clear all low inventory notifications
+        function clearLowInventoryNotifications() {
+            if (confirm('Are you sure you want to clear all low inventory notifications?')) {
+                localStorage.removeItem('lowStockNotifications');
+                renderLowInventoryNotifications([]);
+                
+                // Show feedback
+                const clearBtn = document.querySelector('.clear-btn');
+                const originalText = clearBtn.textContent;
+                clearBtn.textContent = 'Cleared!';
+                clearBtn.style.background = '#28a745';
+                
+                setTimeout(() => {
+                    clearBtn.textContent = originalText;
+                    clearBtn.style.background = '#6c757d';
+                }, 1500);
+            }
+        }
+
+        // Initial render
         renderNotifications(orderNotifications, 'orderNotifications', 'orderEmpty', 'order');
         renderNotifications(systemNotifications, 'systemNotifications', 'systemEmpty', 'system');
-        renderNotifications(lowInventoryNotifications, 'lowInventoryNotifications', 'lowInventoryEmpty', 'low-inventory');
+        
+        // Load and render low inventory notifications
+        const lowInventoryNotifications = loadLowInventoryNotifications();
+        renderLowInventoryNotifications(lowInventoryNotifications);
+        
+        // Auto-refresh notifications every 30 seconds
+        setInterval(() => {
+            const notifications = loadLowInventoryNotifications();
+            renderLowInventoryNotifications(notifications);
+        }, 30000);
     </script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>

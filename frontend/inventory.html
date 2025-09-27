@@ -14,6 +14,68 @@
 		h2 { margin-top: 0; }
 		.search-bar { margin-bottom: 24px; }
 		.search-bar input { width: 60%; padding: 10px; font-size: 1em; border: 1px solid #ccc; border-radius: 4px; }
+		
+		/* Display Controls */
+		.display-controls {
+			display: flex;
+			justify-content: space-between;
+			align-items: center;
+			margin-bottom: 20px;
+			padding: 15px;
+			background: #f8f9fa;
+			border-radius: 8px;
+			border: 1px solid #dee2e6;
+		}
+		.limit-controls {
+			display: flex;
+			align-items: center;
+			gap: 10px;
+		}
+		.limit-controls label {
+			font-weight: bold;
+			color: #333;
+		}
+		.limit-controls select {
+			padding: 6px 10px;
+			border: 1px solid #ccc;
+			border-radius: 4px;
+			font-size: 0.95em;
+		}
+		.pagination-info {
+			color: #666;
+			font-size: 0.95em;
+		}
+		.pagination-controls {
+			display: flex;
+			gap: 8px;
+			align-items: center;
+		}
+		.pagination-controls button {
+			padding: 6px 12px;
+			border: 1px solid #8d31f5;
+			background: white;
+			color: #8d31f5;
+			border-radius: 4px;
+			cursor: pointer;
+			font-size: 0.9em;
+		}
+		.pagination-controls button:hover {
+			background: #8d31f5;
+			color: white;
+		}
+		.pagination-controls button:disabled {
+			opacity: 0.5;
+			cursor: not-allowed;
+		}
+		.pagination-controls button:disabled:hover {
+			background: white;
+			color: #8d31f5;
+		}
+		.pagination-controls button.active {
+			background: #8d31f5;
+			color: white;
+		}
+		
 		form { margin-bottom: 24px; display: flex; gap: 12px; flex-wrap: wrap; align-items: center; }
 		form input, form button { padding: 8px; font-size: 1em; border-radius: 4px; border: 1px solid #ccc; }
 		form button { background: #8d31f5; color: #fff; border: none; cursor: pointer; transition: background 0.2s; }
@@ -25,6 +87,25 @@
 		.actions button:hover { background: #b52b27; }
 		.actions button:first-child { background: #8d31f5; }
 		.actions button:first-child:hover { background: #541998; }
+		.actions button:last-child { background: #8d31f5; }
+		.actions button:last-child:hover { background: #541998; }
+		
+		/* Low Stock Styling */
+		.low-stock-row { background-color: #fff3cd !important; }
+		.critical-stock-row { background-color: #f8d7da !important; }
+		.stock-warning { color: #856404; font-weight: bold; }
+		.stock-critical { color: #721c24; font-weight: bold; }
+		.stock-alert { 
+			padding: 8px 15px; 
+			margin-bottom: 15px; 
+			border-radius: 4px; 
+			border-left: 4px solid #dc3545; 
+			background: #f8d7da; 
+			color: #721c24; 
+			font-weight: bold;
+			display: none;
+		}
+		.stock-alert.show { display: block; }
 	</style>
 </head>
 <body>
@@ -32,14 +113,45 @@
 		<h1>Bookstore Inventory System</h1>
 	</header>
 	<nav>
+		<a href="order-tracking.html">Order Tracking</a>
 		<a href="sales.html">Sales History</a>
 		<a href="notifications.html">Notifications</a>
-	</nav>
+	
+		<a href="#" onclick="logout()">Logout</a></nav>
 	<div class="container">
 		<h2>Manage Inventory</h2>
+		
+		<!-- Stock Alert -->
+		<div id="stockAlert" class="stock-alert"></div>
+		
 		<div class="search-bar">
 			<input type="text" id="searchInput" placeholder="Search inventory...">
 		</div>
+		
+		<!-- Display Controls -->
+		<div class="display-controls">
+			<div class="limit-controls">
+				<label for="itemsPerPage">Items per page:</label>
+				<select id="itemsPerPage" onchange="updatePagination()">
+					<option value="10">10</option>
+					<option value="25" selected>25</option>
+					<option value="50">50</option>
+					<option value="100">100</option>
+					<option value="all">Show All</option>
+				</select>
+			</div>
+			<div class="pagination-info" id="paginationInfo">
+				Showing 0 of 0 items
+			</div>
+			<div class="pagination-controls" id="paginationControls">
+				<button onclick="goToPage(1)" id="firstPage" disabled>First</button>
+				<button onclick="previousPage()" id="prevPage" disabled>Previous</button>
+				<span id="pageNumbers"></span>
+				<button onclick="nextPage()" id="nextPage" disabled>Next</button>
+				<button onclick="goToPage(totalPages)" id="lastPage" disabled>Last</button>
+			</div>
+		</div>
+		
 		<form id="addItemForm">
 			<input type="text" id="itemName" placeholder="Item Name" required>
 			<input type="number" id="itemISBN" placeholder="ISBN" min="0" step="1" required>
@@ -70,20 +182,182 @@
 		const tableBody = document.querySelector('#inventoryTable tbody');
 		let editingBookId = null;
 		const searchInput = document.getElementById('searchInput');
+		
+		// Pagination variables
+		let allBooks = [];
+		let filteredBooks = [];
+		let currentPage = 1;
+		let itemsPerPage = 25;
+		let totalPages = 1;
+		
+		// Low stock alert system
+		const LOW_STOCK_THRESHOLD = 5;
+		const CRITICAL_STOCK_THRESHOLD = 2;
+		let lowStockNotifications = JSON.parse(localStorage.getItem('lowStockNotifications') || '[]');
+		
+		// Function to check and create low stock alerts
+		function checkLowStock(book) {
+			const stock = book.stock_quantity ?? book.stock ?? 0;
+			const bookTitle = book.title || 'Unknown Item';
+			const currentDate = new Date().toISOString().split('T')[0];
+			const currentTime = new Date().toISOString();
+			
+			// Check if we already have a recent notification for this book
+			const existingNotification = lowStockNotifications.find(notif => 
+				notif.bookId === book.id && 
+				notif.isbn === book.isbn &&
+				notif.date === currentDate
+			);
+			
+			if (existingNotification) return false; // Already notified today
+			
+			if (stock <= CRITICAL_STOCK_THRESHOLD && stock >= 0) {
+				// Critical stock level (0-2 items)
+				const notification = {
+					bookId: book.id,
+					isbn: book.isbn,
+					message: `CRITICAL: "${bookTitle}" has only ${stock} item${stock === 1 ? '' : 's'} left in stock!`,
+					date: currentDate,
+					timestamp: currentTime,
+					level: 'critical',
+					stock: stock,
+					bookTitle: bookTitle
+				};
+				
+				lowStockNotifications.push(notification);
+				saveLowStockNotifications();
+				showStockAlert(notification.message, 'critical');
+				return true;
+				
+			} else if (stock <= LOW_STOCK_THRESHOLD && stock > CRITICAL_STOCK_THRESHOLD) {
+				// Low stock level (3-5 items)
+				const notification = {
+					bookId: book.id,
+					isbn: book.isbn,
+					message: `LOW STOCK: "${bookTitle}" is running low with only ${stock} items left.`,
+					date: currentDate,
+					timestamp: currentTime,
+					level: 'warning',
+					stock: stock,
+					bookTitle: bookTitle
+				};
+				
+				lowStockNotifications.push(notification);
+				saveLowStockNotifications();
+				showStockAlert(notification.message, 'warning');
+				return true;
+			}
+			
+			return false;
+		}
+		
+		// Function to save notifications to localStorage
+		function saveLowStockNotifications() {
+			localStorage.setItem('lowStockNotifications', JSON.stringify(lowStockNotifications));
+		}
+		
+		// Function to show stock alert on page
+		function showStockAlert(message, level) {
+			const alertDiv = document.getElementById('stockAlert');
+			alertDiv.textContent = message;
+			alertDiv.classList.add('show');
+			
+			// Auto-hide after 10 seconds
+			setTimeout(() => {
+				alertDiv.classList.remove('show');
+			}, 10000);
+		}
+		
+		// Function to check all items for low stock
+		function checkAllItemsForLowStock() {
+			let alertCount = 0;
+			const lowStockItems = [];
+			const criticalStockItems = [];
+			
+			allBooks.forEach(book => {
+				const stock = book.stock_quantity ?? book.stock ?? 0;
+				
+				if (stock <= CRITICAL_STOCK_THRESHOLD && stock >= 0) {
+					criticalStockItems.push(book);
+					if (checkLowStock(book)) alertCount++;
+				} else if (stock <= LOW_STOCK_THRESHOLD && stock > CRITICAL_STOCK_THRESHOLD) {
+					lowStockItems.push(book);
+					if (checkLowStock(book)) alertCount++;
+				}
+			});
+			
+			// Show summary if multiple items are low
+			if (alertCount > 1) {
+				const criticalCount = criticalStockItems.length;
+				const lowCount = lowStockItems.length;
+				let summaryMessage = `INVENTORY ALERT: `;
+				
+				if (criticalCount > 0) {
+					summaryMessage += `${criticalCount} item${criticalCount === 1 ? '' : 's'} critically low`;
+				}
+				if (lowCount > 0) {
+					if (criticalCount > 0) summaryMessage += `, `;
+					summaryMessage += `${lowCount} item${lowCount === 1 ? '' : 's'} running low`;
+				}
+				summaryMessage += `. Check notifications for details.`;
+				
+				showStockAlert(summaryMessage, 'critical');
+			}
+			
+			return { lowStockItems, criticalStockItems, alertCount };
+		}
+		
+		// Function to get recent low stock notifications (for display)
+		function getRecentLowStockNotifications() {
+			const threeDaysAgo = new Date();
+			threeDaysAgo.setDate(threeDaysAgo.getDate() - 3);
+			
+			return lowStockNotifications
+				.filter(notif => new Date(notif.date) >= threeDaysAgo)
+				.sort((a, b) => new Date(b.date) - new Date(a.date));
+		}
+		
+		// Function to clear old notifications (older than 7 days)
+		function clearOldNotifications() {
+			const oneWeekAgo = new Date();
+			oneWeekAgo.setDate(oneWeekAgo.getDate() - 7);
+			
+			lowStockNotifications = lowStockNotifications.filter(notif => 
+				new Date(notif.date) >= oneWeekAgo
+			);
+			saveLowStockNotifications();
+		}
 
 		// Render a book row from a book object
 		function renderBookRow(book) {
 			const row = document.createElement('tr');
 			row.dataset.bookId = book.id || '';
+			
+			const stock = book.stock_quantity ?? book.stock ?? 0;
+			let stockDisplay = stock;
+			let stockClass = '';
+			
+			// Apply low stock styling and warning text
+			if (stock <= CRITICAL_STOCK_THRESHOLD && stock >= 0) {
+				row.classList.add('critical-stock-row');
+				stockClass = 'stock-critical';
+				stockDisplay = `${stock} (CRITICAL!)`;
+			} else if (stock <= LOW_STOCK_THRESHOLD && stock > CRITICAL_STOCK_THRESHOLD) {
+				row.classList.add('low-stock-row');
+				stockClass = 'stock-warning';
+				stockDisplay = `${stock} (Low Stock)`;
+			}
+			
 			row.innerHTML = `
 				<td>${book.title || ''}</td>
 				<td>${book.isbn || ''}</td>
 				<td>${book.author || ''}</td>
-				<td>${book.stock_quantity ?? book.stock ?? 0}</td>
+				<td class="${stockClass}">${stockDisplay}</td>
 				<td>$${parseFloat(book.price || 0).toFixed(2)}</td>
 				<td class="actions">
 					<button onclick="editRow(this)">Edit</button>
 					<button onclick="deleteRow(this)">Delete</button>
+					<button onclick="orderMore(this)">Order More</button>
 				</td>
 			`;
 			tableBody.appendChild(row);
@@ -94,11 +368,122 @@
 			try {
 				const res = await window.API.getBooks();
 				if (res && res.data) {
-					tableBody.innerHTML = '';
-					res.data.forEach(renderBookRow);
+					allBooks = res.data;
+					// Clear old notifications
+					clearOldNotifications();
+					// Check for low stock after loading
+					setTimeout(() => checkAllItemsForLowStock(), 1000);
+					applyFiltersAndPagination();
 				}
 			} catch (err) {
 				console.error('Failed to load books:', err);
+				allBooks = [];
+				applyFiltersAndPagination();
+			}
+		}
+		
+		// Apply search filters and pagination
+		function applyFiltersAndPagination() {
+			const searchTerm = searchInput.value.toLowerCase();
+			
+			// Filter books based on search
+			if (searchTerm === '') {
+				filteredBooks = [...allBooks];
+			} else {
+				filteredBooks = allBooks.filter(book => 
+					(book.title || '').toLowerCase().includes(searchTerm) ||
+					(book.author || '').toLowerCase().includes(searchTerm) ||
+					(book.isbn || '').toString().includes(searchTerm)
+				);
+			}
+			
+			// Update pagination
+			updatePagination();
+		}
+		
+		// Update pagination based on current settings
+		function updatePagination() {
+			const itemsPerPageSelect = document.getElementById('itemsPerPage');
+			itemsPerPage = itemsPerPageSelect.value === 'all' ? filteredBooks.length : parseInt(itemsPerPageSelect.value);
+			
+			totalPages = itemsPerPage > 0 ? Math.ceil(filteredBooks.length / itemsPerPage) : 1;
+			
+			// Ensure current page is valid
+			if (currentPage > totalPages) currentPage = totalPages;
+			if (currentPage < 1) currentPage = 1;
+			
+			// Render current page
+			renderCurrentPage();
+			updatePaginationControls();
+		}
+		
+		// Render books for current page
+		function renderCurrentPage() {
+			tableBody.innerHTML = '';
+			
+			if (filteredBooks.length === 0) {
+				const row = document.createElement('tr');
+				row.innerHTML = '<td colspan="6" style="text-align: center; color: #666; padding: 20px;">No items found</td>';
+				tableBody.appendChild(row);
+				return;
+			}
+			
+			const startIndex = (currentPage - 1) * itemsPerPage;
+			const endIndex = itemsPerPage === filteredBooks.length ? filteredBooks.length : Math.min(startIndex + itemsPerPage, filteredBooks.length);
+			const booksToShow = filteredBooks.slice(startIndex, endIndex);
+			
+			booksToShow.forEach(renderBookRow);
+		}
+		
+		// Update pagination controls
+		function updatePaginationControls() {
+			const paginationInfo = document.getElementById('paginationInfo');
+			const startItem = filteredBooks.length === 0 ? 0 : (currentPage - 1) * itemsPerPage + 1;
+			const endItem = Math.min(currentPage * itemsPerPage, filteredBooks.length);
+			
+			paginationInfo.textContent = `Showing ${startItem}-${endItem} of ${filteredBooks.length} items`;
+			
+			// Update button states
+			document.getElementById('firstPage').disabled = currentPage <= 1;
+			document.getElementById('prevPage').disabled = currentPage <= 1;
+			document.getElementById('nextPage').disabled = currentPage >= totalPages;
+			document.getElementById('lastPage').disabled = currentPage >= totalPages;
+			
+			// Update page numbers
+			const pageNumbers = document.getElementById('pageNumbers');
+			pageNumbers.innerHTML = '';
+			
+			// Show page numbers (max 5)
+			let startPage = Math.max(1, currentPage - 2);
+			let endPage = Math.min(totalPages, startPage + 4);
+			startPage = Math.max(1, endPage - 4);
+			
+			for (let i = startPage; i <= endPage; i++) {
+				const button = document.createElement('button');
+				button.textContent = i;
+				button.onclick = () => goToPage(i);
+				if (i === currentPage) button.classList.add('active');
+				pageNumbers.appendChild(button);
+			}
+		}
+		
+		// Pagination navigation functions
+		function goToPage(page) {
+			currentPage = page;
+			updatePagination();
+		}
+		
+		function nextPage() {
+			if (currentPage < totalPages) {
+				currentPage++;
+				updatePagination();
+			}
+		}
+		
+		function previousPage() {
+			if (currentPage > 1) {
+				currentPage--;
+				updatePagination();
 			}
 		}
 
@@ -142,7 +527,8 @@
 			if (bookId) {
 				try {
 					await window.API.delBook(bookId);
-					row.remove();
+					// Reload books to update pagination
+					await loadBooks();
 					return;
 				} catch (err) {
 					alert('Delete failed: ' + err.message);
@@ -170,30 +556,89 @@
 			row.remove();
 		}
 
-		// Search and bring matches to the top
-		searchInput.addEventListener('input', function() {
-			const filter = searchInput.value.trim().toLowerCase();
-			const rows = Array.from(tableBody.querySelectorAll('tr'));
-			if (!filter) {
-				rows.forEach(row => tableBody.appendChild(row));
-				return;
-			}
-			const matched = [];
-			const unmatched = [];
-			rows.forEach(row => {
-				const text = row.textContent.toLowerCase();
-				if (text.includes(filter)) {
-					matched.push(row);
+		window.orderMore = function(btn) {
+			const row = btn.closest('tr');
+			const cells = row.querySelectorAll('td');
+			const title = cells[0].textContent;
+			const currentQty = parseInt(cells[3].textContent, 10);
+			
+			const additionalQty = prompt(`How many copies of "${title}" would you like to order?`, '10');
+			if (additionalQty && !isNaN(additionalQty) && parseInt(additionalQty, 10) > 0) {
+				const newQty = currentQty + parseInt(additionalQty, 10);
+				const bookId = row.dataset.bookId;
+				
+				if (bookId) {
+					// Update the quantity in the backend
+					updateBookQuantity(bookId, newQty, row);
 				} else {
-					unmatched.push(row);
+					// Update locally if no backend ID
+					cells[3].textContent = newQty;
 				}
-			});
-			matched.forEach(row => tableBody.appendChild(row));
-			unmatched.forEach(row => tableBody.appendChild(row));
+			}
+		}
+
+		async function updateBookQuantity(bookId, newQuantity, row) {
+			try {
+				const cells = row.querySelectorAll('td');
+				const bookData = {
+					title: cells[0].textContent,
+					isbn: cells[1].textContent,
+					author: cells[2].textContent,
+					stock_quantity: newQuantity,
+					price: parseFloat(cells[4].textContent.replace('$', ''))
+				};
+				
+				await window.API.editBook(bookId, bookData);
+				
+				// Update the display and check for low stock
+				const updatedBook = { ...bookData, id: bookId };
+				
+				// Update the row display with new styling
+				let stockDisplay = newQuantity;
+				let stockClass = '';
+				
+				// Remove existing stock classes
+				row.classList.remove('low-stock-row', 'critical-stock-row');
+				
+				if (newQuantity <= CRITICAL_STOCK_THRESHOLD && newQuantity >= 0) {
+					row.classList.add('critical-stock-row');
+					stockClass = 'stock-critical';
+					stockDisplay = `${newQuantity} (CRITICAL!)`;
+				} else if (newQuantity <= LOW_STOCK_THRESHOLD && newQuantity > CRITICAL_STOCK_THRESHOLD) {
+					row.classList.add('low-stock-row');
+					stockClass = 'stock-warning';
+					stockDisplay = `${newQuantity} (Low Stock)`;
+				}
+				
+				cells[3].innerHTML = `<span class="${stockClass}">${stockDisplay}</span>`;
+				
+				// Check for low stock alerts
+				checkLowStock(updatedBook);
+				
+				// Update allBooks array
+				const bookIndex = allBooks.findIndex(b => b.id === bookId);
+				if (bookIndex !== -1) {
+					allBooks[bookIndex].stock_quantity = newQuantity;
+				}
+				
+				alert(`Stock updated! New quantity: ${newQuantity}`);
+			} catch (err) {
+				alert('Failed to update stock: ' + err.message);
+			}
+		}
+
+		// Search and bring matches to the top
+		// Update search to work with pagination
+		searchInput.addEventListener('input', function() {
+			currentPage = 1; // Reset to first page on search
+			applyFiltersAndPagination();
 		});
 
 		// Initial load
 		loadBooks();
 	</script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>

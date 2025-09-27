@@ -27,7 +27,8 @@
     </header>
     <nav>
         <a href="store.html">Back to Shop</a>
-    </nav>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
     <div class="container">
         <h2>Items in Your Cart</h2>
         <div id="cartContent"></div>
@@ -146,5 +147,8 @@
         
         renderCart();
     </script>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>

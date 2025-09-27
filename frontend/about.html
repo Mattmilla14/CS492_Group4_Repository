@@ -26,7 +26,8 @@
     </header>
     <nav>
         <a href="store.html">Shop</a>
-    </nav>
+    
+        <a href="#" onclick="logout()">Logout</a></nav>
     <div class="container">
         <div class="about-section">
             <h2>Our Story</h2>
@@ -59,5 +60,8 @@
             </div>
         </div>
     </div>
+<script>
+function logout() { try { localStorage.removeItem('jwt'); } catch(e) {} window.location.href = 'index.html'; }
+</script>
 </body>
 </html>
