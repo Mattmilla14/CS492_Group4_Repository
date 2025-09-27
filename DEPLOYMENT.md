@@ -1,54 +1,82 @@
-# Deployment and Demo Guide
-
-This doc has a **Technical Runbook** and a **Simple Demo Breakdown**.
+# Deployment Guide — Bookstore Management System
 
 ---
 
-## Technical Runbook
+## Setup Instructions
 
-### Run scripts
-- Backend
-  - Windows: `scripts\run_backend.bat`
-  - Mac/Linux: `bash scripts/run_backend.sh`
-- Frontend
-  - Windows: `scripts\run_frontend.bat`
-  - Mac/Linux: `bash scripts/run_frontend.sh`
+### Prerequisites
+- Python 3.10+ installed.
+- Git installed.
+- (Optional) Node.js for frontend builds, not required for demo.
 
-### Endpoints (high level)
-- `POST /api/register`  → `{ success, user, token }`
-- `POST /api/login`     → `{ success, user, token }`
-- `GET  /api/profile`   → `{ success, user }` (requires `Authorization: Bearer <token>`)
-- `GET  /api/books`     → `{ success, data:[…] }`
-- `GET  /api/books/:id` → `{ success, data:{…} }`
-- `POST /api/books`     → admin only
-- `PUT  /api/books/:id` → admin only
-- `DELETE /api/books/:id` → admin only
-- `POST /api/sales`     → creates a sale from cart items
-- `GET  /api/sales`     → admin only
-- `GET  /api/sales/user` → current user’s sales
-- `GET  /api/sales/count` → `{ total_count, recent_sales }`
+---
 
-### Quick checks (browser)
-- `http://localhost:5000/api/health` → JSON with `"success": true`
-- `http://localhost:5000/api/books`  → JSON list
+### Backend Setup
+1. Navigate to `/backend`.
+2. Ensure `requirements.txt` is present.
+3. Run backend:
+   - **Windows**: `scripts\run_backend.bat`
+   - **Mac/Linux**: `./scripts/run_backend.sh`
 
-If something fails, watch the backend terminal for errors.
+This will:
+- Create a virtual environment.
+- Install all dependencies from `requirements.txt`.
+- Start Flask at `http://127.0.0.1:5000`.
+
+---
+
+### Frontend Setup
+1. Navigate to `/frontend`.
+2. Run:
+   - **Windows**: `scripts\run_frontend.bat`
+   - **Mac/Linux**: `./scripts/run_frontend.sh`
+
+This will:
+- Serve frontend at `http://localhost:8080`.
+
+---
+
+### Admin Seeding
+To ensure the demo admin account exists:
+- **Windows**: `scripts\seed_admin.bat`
+- **Mac/Linux**: `./scripts/seed_admin.sh`
+
+Default seeded account:
+- Email: `admin@bookstore.com`
+- Password: `admin123`
+
+---
+
+### Sync Usernames
+For consistency across demo accounts:
+- **Windows**: `scripts\sync_usernames.bat`
+- **Mac/Linux**: `./scripts/sync_usernames.sh`
 
 ---
 
 ## Simple Demo Breakdown
+1. **Start Backend** → `run_backend`  
+   - Seeds books, users, and ensures DB is created.  
 
-1. **Open the store:** `http://localhost:8080` (home page visible).
-2. **Login/Register:** Use a demo account or register a new one. Then log in.
-3. **Find a book:** Search or open one from the catalog → show details (title/author/price/stock).
-4. **Add to cart:** Add a book → open the cart page to show it appears.
-5. **Change mind:** Remove it → cart updates.
-6. **Checkout:** Add another book and complete checkout → show receipt/confirmation.
-7. **(Optional) Inventory:** Add/edit/delete a book in Inventory → refresh list to confirm changes.
+2. **Start Frontend** → `run_frontend`  
+   - Opens app at [http://localhost:8080](http://localhost:8080).  
+
+3. **Seed Admin** → `seed_admin`  
+   - Confirms `admin@bookstore.com` / `admin123` exists.  
+
+4. **Login Paths**:  
+   - Admin: can view inventory, notifications, all orders.  
+   - User: can shop, checkout, view order history.  
 
 ---
 
-## Packaging (submission)
-- Ensure `README.md`, `DEPLOYMENT.md`, `/backend`, `/frontend`, `/scripts`, `/build` present.
-- Exclude `.venv`, `backend/instance/`, and any `*.db` files.
-- Zip the repo as `CS492_GP4.ZIP`.
+## Demo Roles
+- **Racquel**: primary walkthrough.  
+- **Larry, Matthew, Angel**: add short interjections for key features (notifications, order tracking, password reset disclaimer).  
+
+---
+
+## Known Limitations
+- Password reset = demo only (token shown in JSON).  
+- No external email service.  
+- Inventory updates are basic, no bulk import.
