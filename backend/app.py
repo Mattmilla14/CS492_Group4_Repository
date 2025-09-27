@@ -361,6 +361,104 @@ def delete_book(current_user, book_id):
         }), 500
 
 # ===============================
+# SHOPPING CART
+# ===============================
+
+@app.route('/api/cart/<int:user_id>', methods=['GET'])
+@token_required
+def get_cart(current_user, user_id):
+    """Get all items in the user's shopping cart"""
+    if current_user.id != user_id:
+        return jsonify({'success': False, 'error': 'You are not allowed to see this cart'}), 403
+
+    cart = Sale.query.filter_by(user_id=user_id, status='cart').first()
+    if not cart:
+        return jsonify({'success': True, 'items': []})  # Empty cart
+
+    items = [item.to_dict() for item in cart.items]
+    return jsonify({'success': True, 'items': items})
+
+@app.route('/api/cart/<int:user_id>/add', methods=['POST'])
+@token_required
+def add_to_cart(current_user, user_id):
+    """Add a book to the shopping cart"""
+    if current_user.id != user_id:
+        return jsonify({'success': False, 'error': 'Cannot add to someone else\'s cart'}), 403
+
+    data = request.get_json()
+    book_id = data.get('book_id')
+    quantity = int(data.get('quantity', 1))
+
+    book = Book.query.get(book_id)
+    if not book:
+        return jsonify({'success': False, 'error': 'Book not found'}), 404
+    if book.stock_quantity < quantity:
+        return jsonify({'success': False, 'error': f'Not enough stock for {book.title}'}), 400
+
+    cart = Sale.query.filter_by(user_id=user_id, status='cart').first()
+    if not cart:
+        cart = Sale(user_id=user_id, total_amount=0, status='cart')
+        db.session.add(cart)
+        db.session.commit()
+
+    sale_item = SaleItem(sale_id=cart.id, book_id=book.id, quantity=quantity, price_at_time=book.price)
+    db.session.add(sale_item)
+    db.session.commit()
+
+    return jsonify({'success': True, 'message': f'{book.title} added to cart'})
+
+
+# ===============================
+# CHECKOUT AND LOW-STOCK ALERTS
+# ===============================
+
+@app.route('/api/checkout/<int:user_id>', methods=['POST'])
+@token_required
+def checkout(current_user, user_id):
+    """Check out the cart and place the order"""
+    if current_user.id != user_id:
+        return jsonify({'success': False, 'error': 'Cannot checkout for someone else'}), 403
+
+    cart = Sale.query.filter_by(user_id=user_id, status='cart').first()
+    if not cart or not cart.items:
+        return jsonify({'success': False, 'error': 'Your cart is empty'}), 400
+
+    low_stock_alerts = []
+    total_amount = 0
+
+    for item in cart.items:
+        book = Book.query.get(item.book_id)
+        if book.stock_quantity < item.quantity:
+            return jsonify({'success': False, 'error': f'Not enough stock for {book.title}'}), 400
+        book.stock_quantity -= item.quantity
+        total_amount += item.price_at_time * item.quantity
+
+        if book.stock_quantity < 5:
+            low_stock_alerts.append(f"Low stock for {book.title}! (stock={book.stock_quantity})")
+            db.session.add(Notification(
+                type='LOW_STOCK',
+                message=f"Low stock for '{book.title}' (stock={book.stock_quantity}).",
+                book_id=book.id
+            ))
+        if book.stock_quantity == 0:
+            db.session.add(Notification(
+                type='OUT_OF_STOCK',
+                message=f"'{book.title}' is now OUT OF STOCK.",
+                book_id=book.id
+            ))
+
+    cart.total_amount = total_amount
+    cart.status = 'completed'
+    db.session.commit()
+
+    return jsonify({
+        'success': True,
+        'message': 'Order placed successfully!',
+        'order': cart.to_dict(),
+        'alerts': low_stock_alerts
+    })
+
+# ===============================
 # SALES ENDPOINTS
 # ===============================
 
@@ -608,3 +706,87 @@ def internal_error(error):
 
 if __name__ == '__main__':
     app.run(debug=True, host='0.0.0.0', port=5000)
+# ===============================
+# NOTIFICATIONS
+# ===============================
+from datetime import datetime
+
+@app.route('/api/notifications', methods=['GET'])
+@token_required
+@admin_required
+def list_notifications(current_user):
+    q = Notification.query.order_by(Notification.created_at.desc())
+    unseen = (request.args.get('unseen') or "").lower()
+    ntype = request.args.get('type')
+    if unseen in ('1','true','yes'):
+        q = q.filter(Notification.seen_at.is_(None))
+    if ntype:
+        q = q.filter(Notification.type == ntype)
+    rows = q.limit(200).all()
+    return jsonify({'success': True, 'data': [n.to_dict() for n in rows]})
+
+@app.route('/api/notifications/<int:nid>/ack', methods=['POST'])
+@token_required
+@admin_required
+def ack_notification(current_user, nid):
+    n = Notification.query.get(nid)
+    if not n:
+        return jsonify({'success': False, 'error': 'Not found'}), 404
+    if n.seen_at is None:
+        n.seen_at = datetime.utcnow()
+        db.session.commit()
+    return jsonify({'success': True, 'data': n.to_dict()})
+
+# ===============================
+# ORDER TRACKING (Single Sale by ID)
+# ===============================
+@app.route('/api/sales/<int:sale_id>', methods=['GET'])
+@token_required
+def get_sale_by_id(current_user, sale_id):
+    sale = Sale.query.get(sale_id)
+    if not sale:
+        return jsonify({'success': False, 'error': 'Sale not found'}), 404
+    if current_user.role != 'admin' and sale.user_id != current_user.id:
+        return jsonify({'success': False, 'error': 'Not allowed'}), 403
+    data = sale.to_dict()
+    data['items'] = [i.to_dict() for i in sale.items]
+    return jsonify({'success': True, 'data': data})
+
+# ===============================
+# PASSWORD RESET (Demo-friendly token flow)
+# ===============================
+import secrets
+from datetime import timedelta
+
+@app.route('/api/password-reset/request', methods=['POST'])
+def password_reset_request():
+    data = request.get_json(force=True) or {}
+    email = (data.get('email') or "").strip().lower()
+    if not email:
+        return jsonify({'success': False, 'error': 'Email is required'}), 400
+    user = User.query.filter_by(email=email).first()
+    token = None
+    if user:
+        token = secrets.token_hex(16)
+        pr = PasswordReset(email=email, token=token, expires_at=datetime.utcnow() + timedelta(minutes=30))
+        db.session.add(pr)
+        db.session.commit()
+    return jsonify({'success': True, 'message': 'If the email exists, a reset token has been created.', 'token': token})
+
+@app.route('/api/password-reset/confirm', methods=['POST'])
+def password_reset_confirm():
+    data = request.get_json(force=True) or {}
+    token = (data.get('token') or "").strip()
+    new_password = (data.get('new_password') or "").strip()
+    if not token or not new_password:
+        return jsonify({'success': False, 'error': 'Token and new_password are required'}), 400
+    pr = PasswordReset.query.filter_by(token=token).first()
+    if not pr or not pr.is_valid():
+        return jsonify({'success': False, 'error': 'Invalid or expired token'}), 400
+    user = User.query.filter_by(email=pr.email).first()
+    if not user:
+        return jsonify({'success': False, 'error': 'User not found'}), 404
+    user.set_password(new_password)
+    pr.used_at = datetime.utcnow()
+    db.session.commit()
+    return jsonify({'success': True, 'message': 'Password has been reset.'})

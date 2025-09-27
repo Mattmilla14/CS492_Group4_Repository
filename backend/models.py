@@ -6,6 +6,7 @@ from flask_sqlalchemy import SQLAlchemy
 from flask_bcrypt import Bcrypt
 from datetime import datetime, timedelta
 import jwt
+import secrets
 from flask import current_app
 
 # Create database and encryption objects
@@ -240,3 +241,43 @@ class SaleItem(db.Model):
     
     def __repr__(self):
         return f'<SaleItem {self.id} - Book {self.book_id} x{self.quantity}>'
+# --- Notifications -----------------------------------------------------------
+class Notification(db.Model):
+    __tablename__ = 'notifications'
+
+    id = db.Column(db.Integer, primary_key=True)
+    type = db.Column(db.String(32), nullable=False)  # 'LOW_STOCK', 'OUT_OF_STOCK', etc.
+    message = db.Column(db.Text, nullable=False)
+
+    book_id = db.Column(db.Integer, db.ForeignKey('books.id'), nullable=True)
+    sale_id = db.Column(db.Integer, db.ForeignKey('sales.id'), nullable=True)
+
+    created_at = db.Column(db.DateTime, default=datetime.utcnow)
+    seen_at = db.Column(db.DateTime, nullable=True)
+
+    book = db.relationship('Book', backref=db.backref('notifications', lazy=True))
+    sale = db.relationship('Sale', backref=db.backref('notifications', lazy=True))
+
+    def to_dict(self):
+        return {
+            'id': self.id,
+            'type': self.type,
+            'message': self.message,
+            'book_id': self.book_id,
+            'sale_id': self.sale_id,
+            'created_at': self.created_at.isoformat(),
+            'seen_at': self.seen_at.isoformat() if self.seen_at else None
+        }
+
+# --- Password Reset Tokens ---------------------------------------------------
+class PasswordReset(db.Model):
+    __tablename__ = 'password_resets'
+
+    id = db.Column(db.Integer, primary_key=True)
+    email = db.Column(db.String(120), nullable=False)
+    token = db.Column(db.String(64), unique=True, nullable=False)
+    expires_at = db.Column(db.DateTime, nullable=False)
+    used_at = db.Column(db.DateTime, nullable=True)
+
+    def is_valid(self):
+        return self.used_at is None and datetime.utcnow() < self.expires_at
